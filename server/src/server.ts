@@ -4,12 +4,13 @@ import nodemailer from "nodemailer";
 import bodyParser from "body-parser";
 import axios from "axios";
 import cors from "cors";
+import dotenv from "dotenv";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const OTP_EXPIRY_DURATION = 5 * 60 * 1000;
 app.use(cors());
-
-const API_KEY = "f54454751b3c48bc855140631242202";
+dotenv.config();
 
 mongoose.connect("mongodb://127.0.0.1:27017/weather-app");
 
@@ -35,18 +36,28 @@ app.post("/generate-otp", async (req: Request, res: Response) => {
         if (!emailRegex.test(email)) {
             return res.status(400).json({ error: "Invalid email format" });
         }
-        try {
+        const currentTime = new Date().getTime();
+        const existingUser = await User.findOne({ email });
+        if (!existingUser) {
             const otp = await getTemperatures();
-            const user = new User({ email, otp });
-            await user.save();
+            const newUser = new User({ email, otp, createdAt: new Date() });
+            await newUser.save();
             await sendEmail(email, `Your OTP is: ${otp}`);
-
             res.json({ success: true, message: "OTP sent successfully" });
-        } catch (error: any) {
-            if (error.code === 11000) {
-                res.status(400).json({ success: false, message: "Email already registered" });
+        } else {
+            const createdAtTime = existingUser.createdAt.getTime();
+
+            if (currentTime - createdAtTime > OTP_EXPIRY_DURATION) {
+                const newOtp = await getTemperatures();
+                existingUser.otp = newOtp;
+                existingUser.createdAt = new Date();
+                await existingUser.save();
+                await sendEmail(email, `Your OTP is: ${newOtp}`);
+
+                res.json({ success: true, message: "OTP updated and sent successfully" });
             } else {
-                throw error;
+                const timeLeftForNewOTP = Math.ceil((OTP_EXPIRY_DURATION - (currentTime - createdAtTime)) / 1000);
+                res.status(400).json({ success: false, message: `OTP is still valid. Try again in ${timeLeftForNewOTP} seconds.` });
             }
         }
     } catch (error) {
@@ -56,13 +67,12 @@ app.post("/generate-otp", async (req: Request, res: Response) => {
 });
 
 async function getTemperatures(): Promise<string> {
-    // todo should it return something?
     try {
         const numOfCities = 3;
         const cities = getRandomUniqueCities(numOfCities);
         const promises = cities.map(async (city) => {
             try {
-                const response = await axios.get(`https://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${city}`);
+                const response = await axios.get(`https://api.weatherapi.com/v1/current.json?key=${process.env.API_KEY}&q=${city}`);
                 console.log(`Weather in ${city}:`, response.data);
                 const tempFloat = response.data.current.temp_c;
                 const temp = Math.abs(Math.round(tempFloat)).toString().padStart(2, "0");
@@ -88,14 +98,14 @@ async function sendEmail(to: string, message: string): Promise<void> {
         port: 465,
         secure: true,
         auth: {
-            user: "otptaskbar@gmail.com",
-            pass: "otptaskbar123!",
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
         },
     });
 
     const mailOptions = {
-        from: "otptaskbar@gmail.com",
-        to: "barz100@gmail.com",
+        from: process.env.EMAIL_USER,
+        to: to,
         subject: "OTP",
         text: message,
     };
