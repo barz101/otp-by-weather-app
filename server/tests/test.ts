@@ -1,4 +1,4 @@
-import * as assert from "assert";
+import assert from "assert";
 import axios from "axios";
 import { User } from "../src/server";
 
