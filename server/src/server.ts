@@ -26,7 +26,7 @@ const userSchema: Schema<IUser> = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
 });
 
-const User: Model<IUser> = mongoose.model("User", userSchema);
+export const User: Model<IUser> = mongoose.model("User", userSchema);
 
 app.use(bodyParser.json());
 app.post("/generate-otp", async (req: Request, res: Response) => {
@@ -57,7 +57,7 @@ app.post("/generate-otp", async (req: Request, res: Response) => {
                 res.json({ success: true, message: "OTP updated and sent successfully" });
             } else {
                 const timeLeftForNewOTP = Math.ceil((OTP_EXPIRY_DURATION - (currentTime - createdAtTime)) / 1000);
-                res.status(400).json({ success: false, message: `OTP is still valid. Try again in ${timeLeftForNewOTP} seconds.` });
+                return res.status(400).json({ success: false, message: `OTP is still valid. Try again in ${timeLeftForNewOTP} seconds.` });
             }
         }
     } catch (error) {
@@ -73,7 +73,6 @@ async function getTemperatures(): Promise<string> {
         const promises = cities.map(async (city) => {
             try {
                 const response = await axios.get(`https://api.weatherapi.com/v1/current.json?key=${process.env.API_KEY}&q=${city}`);
-                console.log(`Weather in ${city}:`, response.data);
                 const tempFloat = response.data.current.temp_c;
                 const temp = Math.abs(Math.round(tempFloat)).toString().padStart(2, "0");
                 return temp;
@@ -83,7 +82,7 @@ async function getTemperatures(): Promise<string> {
         });
         const temperatureResults = await Promise.all(promises);
         const resultString = temperatureResults.join("");
-        console.log(resultString);
+        // console.log(resultString);
         return resultString;
     } catch (error) {
         console.error("Error fetching temperatures:", error);
